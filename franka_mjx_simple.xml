@@ -7,10 +7,15 @@
     <joint damping="0.5"/>
     <geom contype="1" conaffinity="1" friction="1 0.5 0.5"/>
   </default>
-
-  <worldbody>
+<worldbody>
     <light pos="0 0 3" dir="0 0 -1"/>
     <geom type="plane" size="2 2 0.1" rgba="0.9 0.9 0.9 1"/>
+    
+    <!-- Third-person camera -->
+    <camera name="third_person" pos="1.2 0.8 0.8" xyaxes="-0.8 0.6 0 -0.3 -0.4 0.9"/>
+    
+    <!-- Top-down camera -->
+    <camera name="top_down" pos="0.5 0 1.5" xyaxes="1 0 0 0 1 0"/>
     
     <body name="panda_link0" pos="0 0 0">
       <inertial pos="0 0 0.05" mass="3" diaginertia="0.1 0.1 0.1"/>
@@ -55,6 +60,9 @@
                       <inertial pos="0 0 0.03" mass="0.5" diaginertia="0.01 0.01 0.01"/>
                       <geom type="box" size="0.04 0.04 0.02" rgba="0.2 0.2 0.2 1"/>
                       
+                      <!-- Wrist camera (looking forward from end effector) -->
+                      <camera name="wrist_cam" pos="0 0 0.05" xyaxes="0 -1 0 0.7 0 0.7" fovy="60"/>
+                      
                       <!-- Simple gripper fingers as boxes -->
                       <body name="panda_leftfinger" pos="0 0.02 0.05">
                         <joint name="finger_joint1" type="slide" axis="0 1 0" range="0 0.04"/>
@@ -75,11 +83,18 @@
       </body>
     </body>
     
-    <!-- Add a simple cube to manipulate -->
-    <body name="cube" pos="0.5 0 0.05">
+    <!-- Red cube to manipulate -->
+    <body name="red_cube" pos="0.5 0 0.05">
       <joint type="free"/>
       <inertial pos="0 0 0" mass="0.1" diaginertia="0.001 0.001 0.001"/>
-      <geom type="box" size="0.03 0.03 0.03" rgba="1 0 0 1"/>
+      <geom name="red_cube_geom" type="box" size="0.03 0.03 0.03" rgba="1 0 0 1"/>
+    </body>
+    
+    <!-- Blue cube (second target) -->
+    <body name="blue_cube" pos="0.3 0.3 0.05">
+      <joint type="free"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.001 0.001 0.001"/>
+      <geom name="blue_cube_geom" type="box" size="0.03 0.03 0.03" rgba="0 0 1 1"/>
     </body>
   </worldbody>
   
