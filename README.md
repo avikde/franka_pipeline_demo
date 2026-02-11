@@ -56,4 +56,7 @@ If it doesn't list `CudaDevice` there is an issue.
 
 ## Running
 
+Performance notes:
+- Need to plug in to get max GPU power
+- Batch size 256 fits in VRAM
 
