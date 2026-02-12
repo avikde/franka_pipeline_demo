@@ -175,3 +175,9 @@ SmolVLA is already trained on SO-101 data, so fine-tuning is **only needed** if 
 - [SmolVLA Paper](https://huggingface.co/papers/2506.01844)
 - [SO-101 in LeRobot](https://huggingface.co/docs/lerobot/so101)
 
+## Acknowledgements
+
+- **SO-101 Robot Models:** URDF and MuJoCo XML files sourced from [TheRobotStudio/SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100)
+- **SmolVLA Model:** Pre-trained model from [HuggingFace LeRobot](https://huggingface.co/lerobot/smolvla_base)
+- **LeRobot Framework:** Open-source robotics ML framework by HuggingFace
+
