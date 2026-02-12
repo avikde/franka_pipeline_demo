@@ -8,10 +8,8 @@ For this guide, I will list the steps for an NVIDIA GPU (tested on a laptop with
 ## Clone
 
 ```sh
-git clone --recurse-submodules https://github.com/avikde/franka_pipeline_demo.git
+git clone https://github.com/avikde/vla-pipeline.git
 ```
-
-The Franka model will be at: mujoco_menagerie/franka_emika_panda/
 
 ## Setup for NVIDIA GPU acceleration
 
@@ -27,7 +25,7 @@ Install Python 3.11+ and dependencies
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y python3 python3-venv python3-pip build-essential git
 
-cd franka_pipeline_demo
+cd vla-pipeline
 python3 -m venv venv # or place elsewhere
 source venv/bin/activate
 ```
