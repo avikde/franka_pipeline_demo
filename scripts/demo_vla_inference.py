@@ -6,11 +6,33 @@ Demonstrates language-conditioned robot control using SmolVLA.
 The pretrained SmolVLA model is already trained on SO-101 data and works out-of-the-box.
 """
 
+import argparse
 import mujoco
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from PIL import Image
+import time
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='SmolVLA Inference Demo with SO-101 Robot')
+parser.add_argument('-l', '--live', action='store_true', help='Enable live visualization (requires display)')
+parser.add_argument('--steps', type=int, default=100, help='Number of simulation steps (default: 100)')
+args = parser.parse_args()
+
+# Import MuJoCo viewer if live visualization is enabled
+if args.live:
+    try:
+        import mujoco.viewer as mj_viewer
+        HAS_VIEWER = True
+        print("Live visualization enabled (using MuJoCo passive viewer)")
+    except Exception as e:
+        print(f"Warning: MuJoCo viewer not available: {e}")
+        print("  Live visualization disabled")
+        HAS_VIEWER = False
+        args.live = False
+else:
+    HAS_VIEWER = False
 
 print("Loading SmolVLA policy...")
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
@@ -85,10 +107,22 @@ for _ in range(100):
 
 # Simulation loop
 print("Running VLA inference loop...")
-num_steps = 100
+if args.live:
+    print("Close the MuJoCo viewer window to stop early")
+num_steps = args.steps
 action_history = []
+iteration_times = []
+
+# Launch MuJoCo passive viewer if live visualization is enabled
+viewer = None
+if args.live and HAS_VIEWER:
+    viewer = mj_viewer.launch_passive(model, data)
+    viewer.cam.distance = 2.0  # Adjust camera distance
+    viewer.cam.azimuth = 45    # Adjust camera angle
+    viewer.cam.elevation = -20
 
 for step in range(num_steps):
+    step_start_time = time.time()
     # Render from 3 cameras
     img_third = render_camera('third_person')
     img_top = render_camera('top_down')
@@ -134,10 +168,36 @@ for step in range(num_steps):
     # Step simulation
     mujoco.mj_step(model, data)
 
-    if step % 20 == 0:
-        print(f"  Step {step}/{num_steps}: actions = [{robot_actions[0]:.3f}, {robot_actions[1]:.3f}, {robot_actions[2]:.3f}] ...")
+    # Live visualization - sync viewer with simulation
+    if args.live and HAS_VIEWER and viewer is not None:
+        viewer.sync()
 
-print(f"✓ Completed {num_steps} simulation steps")
+        # Check if viewer was closed
+        if not viewer.is_running():
+            print(f"\nViewer closed at step {step}")
+            break
+
+    # Track iteration time
+    iteration_time = time.time() - step_start_time
+    iteration_times.append(iteration_time)
+
+    if step % 20 == 0:
+        print(f"  Step {step}/{num_steps}: actions = [{robot_actions[0]:.3f}, {robot_actions[1]:.3f}, {robot_actions[2]:.3f}] ({iteration_time*1000:.1f} ms)")
+
+# Close MuJoCo viewer if it was used
+if viewer is not None:
+    viewer.close()
+
+# Print timing statistics
+print(f"\n✓ Completed {len(iteration_times)} simulation steps")
+if iteration_times:
+    avg_time = np.mean(iteration_times) * 1000  # Convert to ms
+    min_time = np.min(iteration_times) * 1000
+    max_time = np.max(iteration_times) * 1000
+    print(f"  Average iteration time: {avg_time:.2f} ms")
+    print(f"  Min iteration time: {min_time:.2f} ms")
+    print(f"  Max iteration time: {max_time:.2f} ms")
+    print(f"  Effective rate: {1000/avg_time:.1f} Hz")
 
 # Visualization
 print("\nGenerating visualization...")
