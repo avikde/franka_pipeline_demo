@@ -2,9 +2,11 @@
 """
 Debug script to verify VLA vision pipelines.
 
-Uses the underlying VLM backbone directly to describe the scene,
-confirming whether the model can "see" and identify the red cube.
 Tests both raw and preprocessed (512x512 padded) images.
+
+Some things to verify:
+RGB ordering, resolution pipeline, and that the vision encoder
+can perceive the scene objects
 
 Supported models:
   --model smolvla     SmolVLM2-500M (used by SmolVLA and VLA-0-Smol)
