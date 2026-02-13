@@ -135,7 +135,7 @@ for _ in range(100):
 
 # Launch viewer if GUI mode
 if not args.headless and HAS_VIEWER:
-    viewer = mj_viewer.launch_passive(model, data)
+    viewer = mj_viewer.launch_passive(model, data, show_left_ui=False, show_right_ui=False)
     viewer.cam.distance = 0.6
     viewer.cam.azimuth = 35
     viewer.cam.elevation = -25
