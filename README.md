@@ -206,3 +206,45 @@ WSL opengl single camera
   Total iteration...............  337.72 ms  (100.0%)
     (min/max)...................  294.59 / 477.17 ms
 
+Win
+
+  Rendering (3 cameras).........  913.59 ms  ( 97.2%)
+    getCameraImage()............  833.40 ms  ( 88.7%)
+  Physics step..................    0.62 ms  (  0.1%)
+  Total iteration...............  939.45 ms  (100.0%)
+    (min/max)...................  898.33 / 1425.80 ms
+
+Win opengl
+
+  Rendering (3 cameras).........  159.11 ms  ( 98.5%)
+    getCameraImage()............   76.99 ms  ( 47.6%)
+  Physics step..................    0.60 ms  (  0.4%)
+  Total iteration...............  161.59 ms  (100.0%)
+    (min/max)...................  142.42 / 257.57 ms
+
+Win opengl single camera
+
+  Rendering (1 camera)..........   99.17 ms  ( 97.7%)
+    getCameraImage()............   41.72 ms  ( 41.1%)
+  Physics step..................    0.73 ms  (  0.7%)
+  Total iteration...............  101.50 ms  (100.0%)
+    (min/max)...................   80.99 / 156.19 ms
+
+Mujoco 
+
+  Rendering (3 cameras).........  859.79 ms  ( 99.1%)
+    render() calls..............  855.82 ms  ( 98.7%)
+  Viewer sync...................    3.16 ms  (  0.4%)
+  Physics step..................    0.50 ms  (  0.1%)
+  Total iteration...............  867.33 ms  (100.0%)
+    (min/max)...................  786.47 / 1428.28 ms
+
+Mujoco single camera
+
+  Rendering (1 camera)..........  328.32 ms  ( 98.4%)
+    render() calls..............  325.35 ms  ( 97.5%)
+  Viewer sync...................    4.34 ms  (  1.3%)
+  Physics step..................    0.29 ms  (  0.1%)
+  Total iteration...............  333.83 ms  (100.0%)
+    (min/max)...................  303.48 / 631.69 ms
+
