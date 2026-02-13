@@ -181,3 +181,28 @@ SmolVLA is already trained on SO-101 data, so fine-tuning is **only needed** if 
 - **SmolVLA Model:** Pre-trained model from [HuggingFace LeRobot](https://huggingface.co/lerobot/smolvla_base)
 - **LeRobot Framework:** Open-source robotics ML framework by HuggingFace
 
+
+WSL
+
+  Rendering (3 cameras)......... 1496.73 ms  ( 99.9%)
+    getCameraImage()............ 1414.27 ms  ( 94.4%)
+  Physics step..................    0.70 ms  (  0.0%)
+  Total iteration............... 1498.36 ms  (100.0%)
+    (min/max)...................  359.14 / 1674.81 ms
+
+WSL opengl
+
+  Rendering (3 cameras).........  884.64 ms  ( 99.8%)
+    getCameraImage()............  800.09 ms  ( 90.3%)
+  Physics step..................    0.73 ms  (  0.1%)
+  Total iteration...............  886.39 ms  (100.0%)
+    (min/max)...................  820.23 / 967.92 ms
+
+WSL opengl single camera
+
+  Rendering (1 camera)..........  335.89 ms  ( 99.5%)
+    getCameraImage()............  279.10 ms  ( 82.6%)
+  Physics step..................    0.76 ms  (  0.2%)
+  Total iteration...............  337.72 ms  (100.0%)
+    (min/max)...................  294.59 / 477.17 ms
+

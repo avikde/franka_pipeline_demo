@@ -22,9 +22,11 @@ import signal
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='SmolVLA Inference Demo with PyBullet')
-parser.add_argument('-l', '--live', action='store_true', help='Enable live visualization (GUI mode)')
 parser.add_argument('--steps', type=int, default=100, help='Number of simulation steps (default: 100)')
 parser.add_argument('--single-camera', action='store_true', help='Use only one camera view (faster, may reduce accuracy)')
+parser.add_argument('--headless', action='store_true', help='Run without GUI (faster, no visualization)')
+parser.add_argument('--renderer', type=str, default='tiny', choices=['tiny', 'opengl'],
+                    help='Renderer: tiny (CPU, default) or opengl (GPU if available)')
 args = parser.parse_args()
 
 # Signal handler for clean exit
@@ -43,21 +45,28 @@ from lerobot.policies.smolvla.processor_smolvla import make_smolvla_pre_post_pro
 
 # Initialize PyBullet
 print("Initializing PyBullet...")
-if args.live:
-    # GUI mode for live visualization
-    physics_client = p.connect(p.GUI)
-    print("Live visualization enabled (PyBullet GUI)")
-else:
-    # Headless mode with DIRECT connection (faster)
+if args.headless:
+    # Headless mode with DIRECT connection (faster, no GUI)
     physics_client = p.connect(p.DIRECT)
     print("Running in headless mode (DIRECT)")
+    GUI_MODE = False
+else:
+    # GUI mode for visualization (default)
+    # Resolution for GUI window (will downsample to 256x256 for VLA)
+    GUI_WIDTH, GUI_HEIGHT = 512, 512
+    physics_client = p.connect(p.GUI, options=f"--width={GUI_WIDTH} --height={GUI_HEIGHT}")
+    print(f"GUI enabled ({GUI_WIDTH}x{GUI_HEIGHT})")
+    GUI_MODE = True
 
 # Set up simulation
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.setGravity(0, 0, -9.8)
 p.setTimeStep(1./240.)  # 240 Hz simulation
-p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
-p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)
+
+if GUI_MODE:
+    # Configure GUI appearance
+    p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)  # Hide GUI panels
+    p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)  # Disable shadows for performance
 
 # Load plane (floor)
 plane_id = p.loadURDF("plane.urdf")
@@ -67,6 +76,12 @@ plane_id = p.loadURDF("plane.urdf")
 print("Loading SO-101 robot from URDF...")
 robot_urdf_path = "assets/so101/so101.urdf"
 robot_id = p.loadURDF(robot_urdf_path, [0, 0, 0], useFixedBase=True)
+
+# Print renderer info
+if args.renderer == 'opengl':
+    print("Using GPU-accelerated OpenGL renderer (ER_BULLET_HARDWARE_OPENGL)")
+else:
+    print("Using CPU TinyRenderer (ER_TINY_RENDERER)")
 
 # Get number of joints
 num_joints = p.getNumJoints(robot_id)
@@ -125,8 +140,8 @@ blue_cube_id = p.createMultiBody(
     basePosition=blue_cube_pos
 )
 
-# Camera rendering setup (256x256 for VLA)
-WIDTH, HEIGHT = 256, 256
+# Camera rendering setup (256x256 for VLA input)
+VLA_WIDTH, VLA_HEIGHT = 256, 256
 
 # Define camera viewpoints matching SO-101 MuJoCo scene
 # Camera positions from assets/so101/so101_vision_scene.xml:
@@ -154,14 +169,46 @@ camera_configs = {
     }
 }
 
-def render_camera(camera_name):
+# Set GUI camera to match third-person view (shared rendering optimization)
+if GUI_MODE:
+    tp_config = camera_configs['third_person']
+    p.resetDebugVisualizerCamera(
+        cameraDistance=tp_config['distance'],
+        cameraYaw=tp_config['yaw'],
+        cameraPitch=tp_config['pitch'],
+        cameraTargetPosition=tp_config['target']
+    )
+    print(f"GUI camera set to third-person view (shared rendering at {GUI_WIDTH}x{GUI_HEIGHT})")
+
+def render_camera(camera_name, renderer_type='tiny', use_gui_for_third_person=True):
     """
-    Render from a specific camera using PyBullet's tinyrenderer.
-    Returns RGB image as numpy array.
+    Render from a specific camera using PyBullet renderer.
+
+    Returns:
+        (rgb_array, getCameraImage_time_seconds)
+        rgb_array: numpy array at VLA_WIDTH x VLA_HEIGHT (256x256)
+        getCameraImage_time_seconds: time spent in p.getCameraImage()
     """
+    # Optimization: Use GUI window for third_person camera (saves one render)
+    if GUI_MODE and use_gui_for_third_person and camera_name == 'third_person':
+        t0 = time.time()
+        width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
+            GUI_WIDTH, GUI_HEIGHT,
+            renderer=p.ER_BULLET_HARDWARE_OPENGL if renderer_type == 'opengl' else p.ER_TINY_RENDERER
+        )
+        get_image_time = time.time() - t0
+
+        # Convert to numpy and remove alpha
+        rgb_array = np.array(rgb_img, dtype=np.uint8).reshape(GUI_HEIGHT, GUI_WIDTH, 4)[:, :, :3]
+
+        # Downsample to VLA input size (256x256)
+        pil_img = Image.fromarray(rgb_array)
+        pil_img = pil_img.resize((VLA_WIDTH, VLA_HEIGHT), Image.Resampling.BILINEAR)
+        return np.array(pil_img), get_image_time
+
+    # Standard rendering for other cameras
     config = camera_configs[camera_name]
 
-    # Compute view matrix
     view_matrix = p.computeViewMatrixFromYawPitchRoll(
         cameraTargetPosition=config['target'],
         distance=config['distance'],
@@ -171,26 +218,31 @@ def render_camera(camera_name):
         upAxisIndex=2
     )
 
-    # Compute projection matrix
     fov = 60
-    aspect = WIDTH / HEIGHT
+    aspect = VLA_WIDTH / VLA_HEIGHT
     near = 0.1
     far = 5.0
     projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
 
-    # Render with tinyrenderer (ER_TINY_RENDERER is fastest)
+    if renderer_type == 'opengl':
+        renderer = p.ER_BULLET_HARDWARE_OPENGL
+    else:
+        renderer = p.ER_TINY_RENDERER
+
+    t0 = time.time()
     width, height, rgb_img, depth_img, seg_img = p.getCameraImage(
-        WIDTH, HEIGHT,
+        VLA_WIDTH, VLA_HEIGHT,
         view_matrix,
         projection_matrix,
-        renderer=p.ER_TINY_RENDERER  # Use tinyrenderer
+        renderer=renderer
     )
+    get_image_time = time.time() - t0
 
     # Convert to numpy array (remove alpha channel)
-    rgb_array = np.array(rgb_img, dtype=np.uint8).reshape(HEIGHT, WIDTH, 4)
-    rgb_array = rgb_array[:, :, :3]  # Remove alpha channel
+    rgb_array = np.array(rgb_img, dtype=np.uint8).reshape(VLA_HEIGHT, VLA_WIDTH, 4)
+    rgb_array = rgb_array[:, :, :3]
 
-    return rgb_array
+    return rgb_array, get_image_time
 
 def preprocess_image(rgb_image, target_size=256, device='cpu'):
     """
@@ -250,14 +302,17 @@ for joint_idx in controllable_joints[:num_dof]:
 
 # Simulation loop
 print("Running VLA inference loop...")
-if args.live:
-    print("Close the PyBullet GUI window to stop")
+if GUI_MODE:
+    print("Close the PyBullet GUI window to stop early")
+else:
+    print("Press Ctrl-C to stop early")
 num_steps = args.steps
 action_history = []
 
 # Profiling data
 profile_data = {
     'render': [],
+    'get_image': [],
     'preprocess': [],
     'vla_inference': [],
     'physics': [],
@@ -268,16 +323,20 @@ for step in range(num_steps):
     iter_start = time.time()
 
     # 1. Render camera(s)
+    # Note: In GUI mode, third_person uses GUI window pixels (shared rendering)
     render_start = time.time()
+    get_image_time = 0.0
     if args.single_camera:
-        # Use only third-person view (3x faster rendering)
-        img_third = render_camera('third_person')
+        img_third, t = render_camera('third_person', args.renderer)
+        get_image_time += t
         render_time = time.time() - render_start
     else:
-        # Render all 3 cameras (better accuracy, trained configuration)
-        img_third = render_camera('third_person')
-        img_top = render_camera('top_down')
-        img_wrist = render_camera('wrist_cam')
+        img_third, t = render_camera('third_person', args.renderer)
+        get_image_time += t
+        img_top, t = render_camera('top_down', args.renderer)
+        get_image_time += t
+        img_wrist, t = render_camera('wrist_cam', args.renderer)
+        get_image_time += t
         render_time = time.time() - render_start
 
     # 2. Preprocess images for VLA (move to device)
@@ -363,6 +422,7 @@ for step in range(num_steps):
 
     # Store profiling data
     profile_data['render'].append(render_time)
+    profile_data['get_image'].append(get_image_time)
     profile_data['preprocess'].append(preprocess_time)
     profile_data['vla_inference'].append(vla_time)
     profile_data['physics'].append(physics_time)
@@ -371,8 +431,8 @@ for step in range(num_steps):
     if step % 20 == 0:
         print(f"  Step {step}/{num_steps}: actions = [{robot_actions[0]:.3f}, {robot_actions[1]:.3f}, {robot_actions[2]:.3f}] ({total_time*1000:.1f} ms)")
 
-    # Small delay for GUI mode
-    if args.live:
+    # Small delay for GUI mode (helps with responsiveness)
+    if GUI_MODE:
         time.sleep(0.01)
 
 # Print timing statistics
@@ -385,9 +445,11 @@ if num_completed > 0:
     print("Performance Breakdown (average per iteration)")
     print("=" * 60)
 
-    render_label = 'Rendering (1 camera)' if args.single_camera else 'Rendering (3 cameras)'
+    num_cams = 1 if args.single_camera else 3
+    render_label = f'Rendering ({num_cams} camera{"" if num_cams == 1 else "s"})'
     components = [
         (render_label, 'render'),
+        ('  getCameraImage()', 'get_image'),
         ('Image preprocessing', 'preprocess'),
         ('VLA inference', 'vla_inference'),
         ('Physics step', 'physics'),
