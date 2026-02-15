@@ -1,0 +1,48 @@
+<mujoco model="widowx_vision_scene">
+  <!-- Include WidowX 250s robot -->
+  <include file="wx250s.xml"/>
+
+  <option gravity="0 0 -9.81" timestep="0.002"/>
+
+  <visual>
+    <headlight ambient="0.5 0.5 0.5"/>
+    <global offwidth="640" offheight="480"/>
+  </visual>
+
+  <asset>
+    <!-- Ground plane texture -->
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.2 0.2 0.2" rgb2="0.3 0.3 0.3" width="512" height="512"/>
+    <material name="grid" texture="grid" texrepeat="2 2"/>
+  </asset>
+
+  <worldbody>
+    <!-- Ground plane -->
+    <geom name="floor" pos="0 0 0" size="1.5 1.5 0.05" type="plane" material="grid"/>
+
+    <!-- Better lighting for vision -->
+    <light pos="0.3 0.3 1.0" dir="0 0 -1" diffuse="0.8 0.8 0.8"/>
+    <light pos="-0.3 -0.3 0.8" dir="0 0 -1" diffuse="0.4 0.4 0.4"/>
+
+    <!-- Red block (pick target) -->
+    <body name="red_block" pos="0.25 0.1 0.02">
+      <geom name="red_block_geom" type="box" size="0.02 0.02 0.02" rgba="0.8 0.1 0.1 1" mass="0.05"/>
+      <freejoint/>
+    </body>
+
+    <!-- Blue block (placement target) -->
+    <body name="blue_block" pos="0.25 -0.1 0.02">
+      <geom name="blue_block_geom" type="box" size="0.02 0.02 0.02" rgba="0.1 0.1 0.8 1"/>
+    </body>
+
+    <!-- Cameras matching X-VLA WidowX training setup (BridgeData) -->
+
+    <!-- "up" camera - overhead view -->
+    <camera name="up" pos="0.25 0 0.7" xyaxes="0 -1 0 1 0 0" mode="fixed"/>
+
+    <!-- "side" camera - angled side view -->
+    <camera name="side" pos="0.5 0.4 0.35" xyaxes="-0.8 0.6 0 -0.3 -0.4 1" mode="fixed"/>
+
+    <!-- Additional third-person view for debugging -->
+    <camera name="third_person" pos="0.5 0.5 0.4" xyaxes="-1 1 0 -0.5 -0.5 1" mode="fixed"/>
+  </worldbody>
+</mujoco>
