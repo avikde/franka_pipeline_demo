@@ -131,10 +131,10 @@ This runs automated checks to ensure SmolVLA is properly installed and working.
 
 All models below fit on a 12GB GPU (RTX 5070 Ti) and are available through LeRobot.
 
-| Model | Params | VRAM | Vision Encoder | Action Head | Vision Fine-tuned? | Action Modularity | Params to Adapt |
+| Model | Params | VRAM | Vision Encoder | Action Head | Vision Fine-tuned? | Params to Adapt |
 |---|---|---|---|---|---|---|---|
-| **X-VLA** | 900M | ~3-5GB | Pretrained VLM + shared ViT for aux views | Flow matching (10 steps) | Partially (VLM frozen, soft prompts trained) | ⭐⭐⭐⭐⭐ Excellent | **9M (1%)** |
-| **SmolVLA** | 450M | ~2-3GB | SigLIP (via SmolVLM2-500M) | Flow matching (10 steps) | Yes (end-to-end) | ⭐⭐⭐ Moderate | **450M (100%)** |
+| **X-VLA** | 900M | ~3-5GB | Pretrained VLM + shared ViT for aux views | Flow matching (10 steps) | Partially (VLM frozen, soft prompts trained) | **9M (1%)** |
+| **SmolVLA** | 450M | ~2-3GB | SigLIP (via SmolVLM2-500M) | Flow matching (10 steps) | Yes (end-to-end) | **450M (100%)** |
 
 **Key architectural differences:**
 
