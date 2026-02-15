@@ -11,7 +11,6 @@ can perceive the scene objects
 Supported models:
   --model smolvla     SmolVLM2-500M (used by SmolVLA and VLA-0-Smol)
   --model xvla        Qwen2.5-VL-3B (used by X-VLA, frozen during training)
-  --model octo        No VLM backbone — saves image only
 """
 
 import argparse
@@ -21,15 +20,14 @@ import torch
 from PIL import Image
 
 parser = argparse.ArgumentParser(description='VLA Vision Debug')
-parser.add_argument('--model', choices=['smolvla', 'xvla', 'octo'], default='smolvla',
+parser.add_argument('--model', choices=['smolvla', 'xvla'], default='smolvla',
                     help='Which VLA backbone to test (default: smolvla)')
 args = parser.parse_args()
 
 # VLM backbone for each VLA model
 VLM_BACKBONES = {
-    'smolvla': 'HuggingFaceTB/SmolVLM2-500M-Video-Instruct',
-    'xvla': 'Qwen/Qwen2.5-VL-3B-Instruct',
-    'octo': None,  # No pretrained VLM
+    'smolvla': 'HuggingFaceTB/SmolVLM2-500M-Video-Instruct',  # Fine-tuned end-to-end (500M params)
+    'xvla': 'microsoft/Florence-2-large'  # Frozen during training (0.7B params)
 }
 
 # ── 1. Setup MuJoCo scene ────────────────────────────────────────────────────
@@ -75,28 +73,27 @@ Image.fromarray(img_third).save("debug_third_person.png")
 print("  Saved debug_third_person.png")
 
 # ── 3. Prepare preprocessed (padded) image ───────────────────────────────────
-
-from lerobot.policies.smolvla.modeling_smolvla import resize_with_pad
+# SmolVLA uses 512x512 padded images, X-VLA uses 256x256 directly
 
 tensor_01 = torch.from_numpy(img_third).permute(2, 0, 1).float().unsqueeze(0) / 255.0
-tensor_padded = resize_with_pad(tensor_01, 512, 512, pad_value=0)
-padded_img_np = (tensor_padded[0].permute(1, 2, 0).numpy() * 255).clip(0, 255).astype(np.uint8)
 
-print(f"  Preprocessed: {tensor_padded.shape}, range=[{tensor_padded.min():.3f}, {tensor_padded.max():.3f}]")
+if args.model == 'smolvla':
+    from lerobot.policies.smolvla.modeling_smolvla import resize_with_pad
+    tensor_padded = resize_with_pad(tensor_01, 512, 512, pad_value=0)
+    padded_img_np = (tensor_padded[0].permute(1, 2, 0).numpy() * 255).clip(0, 255).astype(np.uint8)
+    print(f"  Preprocessed (512x512 padded): {tensor_padded.shape}, range=[{tensor_padded.min():.3f}, {tensor_padded.max():.3f}]")
+else:  # xvla
+    # X-VLA uses images directly at 256x256, no padding
+    tensor_padded = tensor_01
+    padded_img_np = img_third
+    print(f"  Preprocessed (256x256 direct): {tensor_padded.shape}, range=[{tensor_padded.min():.3f}, {tensor_padded.max():.3f}]")
 
 # ── 4. VLM visual grounding test ─────────────────────────────────────────────
 
-vlm_name = VLM_BACKBONES[args.model]
+vlm_name = VLM_BACKBONES.get(args.model)
 
-if vlm_name is None:
-    print(f"\n=== {args.model.upper()} has no pretrained VLM backbone ===")
-    print("Perception debugging is limited to visual inspection of debug_third_person.png.")
-    print("Octo uses a shallow CNN patch encoder trained from scratch — no standalone")
-    print("vision model to query.")
-else:
-    print(f"\n=== VLM VISUAL GROUNDING TEST ({args.model}) ===")
-    print(f"Loading {vlm_name}...")
-
+if args.model == 'smolvla':
+    # SmolVLM2 is a conversational VLM - use chat interface
     from transformers import AutoProcessor, AutoModelForImageTextToText
 
     vlm_processor = AutoProcessor.from_pretrained(vlm_name)
@@ -138,20 +135,17 @@ else:
         print(f"\n  Q: {question}")
         print(f"  A: {answer}")
 
-    # Test on preprocessed (padded) image
+    # Test on preprocessed image
     preprocessed_pil = Image.fromarray(padded_img_np)
     print(f"\n--- Preprocessed image (512x512 padded) ---")
     answer = ask_vlm(preprocessed_pil, "Is there a red cube in this image? Describe everything you see.")
     print(f"\n  Q: Is there a red cube in this image? Describe everything you see.")
     print(f"  A: {answer}")
 
-    if args.model == 'xvla':
-        print("\n  NOTE: X-VLA keeps this VLM frozen during training.")
-        print("  These answers directly reflect the visual features X-VLA conditions on.")
-    elif args.model == 'smolvla':
-        print("\n  NOTE: SmolVLA fine-tunes the vision encoder end-to-end.")
-        print("  Text QA quality does NOT directly predict action quality.")
+else:  # xvla - Florence-2
+    # NOTE: Florence-2 visual grounding test is currently disabled due to compatibility issues
+    # with transformers. X-VLA uses Florence-2-Large as a frozen vision encoder, so testing
+    # it independently may not reflect X-VLA's actual perception capabilities.
 
-print(f"\n{'='*60}")
-print("Debug complete.")
-print(f"{'='*60}")
+    print("\n  NOTE: Florence-2 visual grounding test skipped")
+    

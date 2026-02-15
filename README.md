@@ -56,29 +56,35 @@ pip install mujoco # mujoco-mjx
 # Install visualization and utilities
 pip install dm_control matplotlib numpy pillow
 
-# Install LeRobot with SmolVLA support
+# For faster model downloads
+pip install huggingface_hub[hf_xet]
+
+# Install LeRobot with SmolVLA and X-VLA
 pip install "lerobot[smolvla]"
+pip install "lerobot[xvla]"
 ```
 
-For an NVIDIA GPU, install torch with CUDA support. For my RTX 5070 Ti Blackwell GPU, I needed CUDA 12.8 for sm120 support:
+**CUDA support:** The LeRobot scripts install `torch 2.7.1` and `torchvision 0.22`, and with CPU support only. To utilize an NVIDIA GPU, we need to install torch with CUDA support. For my RTX 5070 Ti Blackwell GPU, I needed CUDA 12.8 for sm120 support. This should be run *after* the LeRobot packages.
 ```bash
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+pip uninstall torch torchvision -y && pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 ```
 
 ### Verify Installation
 
 
 ```sh
-# Torch: should say "2.10.0+cu128 True" for CUDA access
+# Torch: should say "2.10.0+cu128" and  "True" for CUDA access
 python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 # LeRobot
 python -c "import lerobot; print('LeRobot version:', lerobot.__version__)"
 ```
 
+<!--
 Check JAX GPU access (**Skip for now**)
 ```sh
 python -c "import jax; print('JAX backend:', jax.default_backend()); print('JAX devices:', jax.devices())"
 ```
+-->
 
 ## Quick Start
 
@@ -97,6 +103,22 @@ python scripts/demo_vla_inference.py
 
 This demonstrates language-conditioned robot control using SmolVLA (e.g., "Pick the red cube").
 
+### Run X-VLA Inference Demo
+
+```sh
+python scripts/demo_xvla_widowx.py
+```
+
+This demonstrates X-VLA's modular soft prompt architecture using the WidowX robot with the `lerobot/xvla-widowx` checkpoint (fine-tuned on BridgeData). X-VLA only requires training 1% of parameters (9M) to adapt to new robot embodiments.
+
+### Compare VLA Architectures
+
+```sh
+python scripts/compare_vla_modularity.py
+```
+
+This shows architectural differences in action space modularity between SmolVLA and X-VLA, helpful for understanding how to customize action spaces.
+
 ### Verify VLA Setup
 
 ```sh
@@ -107,25 +129,37 @@ This runs automated checks to ensure SmolVLA is properly installed and working.
 
 ## VLA Model Comparison
 
-All models below fit on a 12GB GPU (RTX 5070 Ti).
+All models below fit on a 12GB GPU (RTX 5070 Ti) and are available through LeRobot.
 
-| Model | Params | VRAM | Vision Encoder | Action Head | Vision Fine-tuned? |
-|---|---|---|---|---|---|
-| **SmolVLA** | 450M | ~2-3GB | SigLIP (via SmolVLM2-500M) | Flow matching (10 steps) | Yes (end-to-end) |
-| Octo-Base | 93M | ~1-2GB | Shallow CNN patch encoder (no pretrained ViT) | Diffusion (20 steps) | N/A (trained from scratch) |
-| X-VLA-0.9B | 900M | ~3-5GB | Pretrained VLM + shared ViT for aux views | Flow matching (10 steps) | Partially (VLM frozen, soft prompts trained) |
-| VLA-0-Smol | 500M | ~2-3GB | SigLIP (via SmolVLM2-500M) | Autoregressive tokens (actions discretized into bins) | Yes (critical — freezing drops success 58% to 25%) |
+| Model | Params | VRAM | Vision Encoder | Action Head | Vision Fine-tuned? | Params to Adapt |
+|---|---|---|---|---|---|---|---|
+| **X-VLA** | 900M | ~3-5GB | Pretrained VLM + shared ViT for aux views | Flow matching (10 steps) | Partially (VLM frozen, soft prompts trained) | **9M (1%)** |
+| **SmolVLA** | 450M | ~2-3GB | SigLIP (via SmolVLM2-500M) | Flow matching (10 steps) | Yes (end-to-end) | **450M (100%)** |
 
 **Key architectural differences:**
-- **SmolVLA** and **X-VLA** use **flow matching**: a denoising loop refines noisy action vectors into clean continuous actions, conditioned on vision+language embeddings. The vision encoder provides spatial features, not text.
-- **Octo** uses **diffusion** (similar concept to flow matching): a 3-layer MLP denoises actions conditioned on transformer embeddings. No pretrained VLM — all parameters trained from scratch on robot data.
-- **VLA-0-Smol** uses **autoregressive token prediction**: actions are discretized into bins and generated as text tokens ("227 232 223 191"). This is the only architecture where text generation quality directly reflects action quality.
 
-References: [SmolVLA](https://huggingface.co/papers/2506.01844) | [Octo](https://octo-models.github.io/) | [X-VLA](https://thu-air-dream.github.io/X-VLA/) | [VLA-0-Smol](https://robot-learning-collective.github.io/vla-0-smol)
+**Action Modularity** refers to how easily the model can adapt to different robot morphologies and action spaces:
+- **X-VLA** uses a **soft prompt hub** with frozen VLM backbone. Only the embodiment-specific soft prompts (9M params, 1% of model) need training for new robots. Excellent for cross-embodiment transfer.
+- **SmolVLA** uses **cross-attention** where action tokens attend to VLM features. More coupled architecture requiring end-to-end training (450M params) for new action spaces. Linear projection adapters provide some flexibility.
 
-### Current model: SmolVLA
+**Action Decoding:**
+- Both models use **flow matching** (10 denoising steps) to refine noisy action vectors into clean continuous actions
+- Flow matching is conditioned on vision+language embeddings from the VLM
+- Enables high-frequency control (50 Hz) with smooth, continuous actions
 
-**SmolVLA** is pretrained on 487 community datasets including SO-101 manipulation tasks and works out-of-the-box for pick-and-place tasks. Model `lerobot/smolvla_base` auto-downloads (~1.8GB) on first use.
+**Vision Encoding:**
+- **X-VLA**: VLM stays frozen during embodiment adaptation, preserving pretrained visual understanding
+- **SmolVLA**: End-to-end fine-tuning of vision encoder is critical (freezing drops success 58% → 25%)
+
+References: [SmolVLA](https://huggingface.co/papers/2506.01844) | [X-VLA](https://arxiv.org/html/2510.10274v1) | [X-VLA LeRobot Docs](https://huggingface.co/docs/lerobot/en/xvla)
+
+### Model Selection
+
+**SmolVLA** (`lerobot/smolvla_base`) is pretrained on 487 community datasets including SO-101 manipulation tasks and works out-of-the-box for pick-and-place tasks. Model auto-downloads (~1.8GB) on first use. Best choice for SO-101 robot.
+
+**X-VLA** offers superior modularity for customizing action spaces. With only 1% of parameters trainable (9M vs SmolVLA's 450M), it's ideal for adapting to new robot morphologies while preserving the pretrained vision encoder. Available checkpoints:
+- `lerobot/xvla-widowx` - Fine-tuned on BridgeData for WidowX robot (use with [demo_xvla_widowx.py](scripts/demo_xvla_widowx.py))
+- `lerobot/xvla_base` - Base model for fine-tuning on custom robots
 
 ## SO-101 Robot Specifications
 
