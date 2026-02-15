@@ -22,15 +22,7 @@ parser.add_argument('--steps', type=int, default=100, help='Number of simulation
 parser.add_argument('--headless', action='store_true', help='Run without GUI')
 args = parser.parse_args()
 
-print("=" * 70)
 print("X-VLA WidowX Demo")
-print("=" * 70)
-print("\nX-VLA Architecture:")
-print("  - Checkpoint: lerobot/xvla-widowx (fine-tuned on BridgeData)")
-print("  - VLM: Frozen (900M params)")
-print("  - Soft Prompts: Trained for WidowX embodiment (9M params)")
-print("  - Action Head: Flow matching (10 steps)")
-print("  - Robot: WidowX 6-DoF (5 arm joints + gripper)")
 
 # Load X-VLA policy
 print("\nLoading X-VLA WidowX policy...")
@@ -43,14 +35,11 @@ try:
 
     # Load WidowX-specific checkpoint
     policy = XVLAPolicy.from_pretrained("lerobot/xvla-widowx").to(device).eval()
-    print("✓ X-VLA WidowX loaded successfully")
-    print(f"  Chunk size: {policy.config.chunk_size}")
-    print(f"  Action steps: {policy.config.n_action_steps}")
-    print(f"  Expected cameras: observation.images.image, observation.images.image2")
 
     # Load language tokenizer (X-VLA uses BART)
     tokenizer = AutoTokenizer.from_pretrained(policy.config.tokenizer_name)
-    print(f"  Tokenizer: {policy.config.tokenizer_name}")
+
+    print(f"Loaded X-VLA (chunk_size={policy.config.chunk_size}, n_action_steps={policy.config.n_action_steps})")
 
 except ImportError as e:
     print(f"\n❌ X-VLA not installed: {e}")
@@ -61,17 +50,11 @@ except ImportError as e:
     sys.exit(1)
 
 # Load WidowX MuJoCo model
-print("\nLoading WidowX MuJoCo model...")
 try:
     model = mujoco.MjModel.from_xml_path('assets/widowx/widowx_vision_scene.xml')
     data = mujoco.MjData(model)
-    print("✓ WidowX model loaded successfully")
 except Exception as e:
-    print(f"\n❌ Error loading WidowX model: {e}")
-    print("\nMake sure you have the WidowX assets:")
-    print("  assets/widowx/widowx.urdf")
-    print("  assets/widowx/widowx_vision_scene.xml")
-    print("  assets/widowx/meshes/*.stl")
+    print(f"Error loading WidowX model: {e}")
     sys.exit(1)
 
 # Setup renderer
@@ -93,10 +76,9 @@ def preprocess_image(rgb_image, device='cpu'):
 
 # Task instruction
 task_instruction = "Pick up the red block"
-print(f"\nTask: '{task_instruction}'")
+print(f"Task: '{task_instruction}'")
 
 # Tokenize language instruction once (before the loop)
-print("Tokenizing language instruction...")
 tokenized = tokenizer(
     task_instruction,
     padding='max_length',
@@ -106,10 +88,8 @@ tokenized = tokenizer(
 )
 language_tokens = tokenized['input_ids'].to(device)
 language_attention_mask = tokenized['attention_mask'].to(device)
-print(f"  Tokens shape: {language_tokens.shape}")
 
 # Settle physics
-print("Settling physics...")
 for _ in range(100):
     mujoco.mj_step(model, data)
 
@@ -123,31 +103,11 @@ if not args.headless:
         viewer.cam.azimuth = 45
         viewer.cam.elevation = -20
         viewer.cam.lookat[:] = [0.2, 0.0, 0.2]
-        print("✓ MuJoCo viewer launched")
     except Exception as e:
-        print(f"Warning: Could not launch viewer: {e}")
         args.headless = True
 
-# Get WidowX joint info
-print("\nWidowX WX250S Robot Configuration:")
-print(f"  Total DoF: {model.nv}")
-print(f"  Actuators: {model.nu}")
-
-# WidowX WX250S has 6 arm joints + 1 gripper actuator (total 7)
-actuator_names = []
-for i in range(model.nu):
-    actuator_names.append(model.actuator(i).name)
-print(f"  Actuator names: {actuator_names}")
-print(f"  Expected: ['waist', 'shoulder', 'elbow', 'forearm_roll', 'wrist_angle', 'wrist_rotate', 'gripper']")
-
 # Simulation loop
-print("\n" + "=" * 70)
 print("Running X-VLA inference loop...")
-print("=" * 70)
-if viewer is not None:
-    print("Close the viewer window to stop early")
-else:
-    print("Press Ctrl-C to stop early")
 
 # Profiling
 profile_data = {
@@ -189,16 +149,16 @@ for step in range(args.steps):
         'observation.language.attention_mask': language_attention_mask,
     }
 
-    # 3. VLA inference
+    # 3. VLA inference (check if new chunk or popping from queue)
     vla_start = time.time()
+    queue_was_empty = len(policy._queues.get("action", [])) == 0
+
     with torch.inference_mode():
         try:
             actions = policy.select_action(observation)
         except Exception as e:
-            print(f"\n❌ VLA inference error at step {step}: {e}")
-            print("This may happen if the observation format doesn't match the checkpoint.")
-            print("Continuing with zero actions...")
-            actions = torch.zeros(6, device=device)
+            print(f"VLA inference error at step {step}: {e}")
+            actions = torch.zeros(7, device=device)
 
     if device == "cuda":
         torch.cuda.synchronize()
@@ -242,18 +202,21 @@ for step in range(args.steps):
     if step % 20 == 0:
         print(f"  Step {step}/{args.steps}: actions = [{robot_actions[0]:.3f}, {robot_actions[1]:.3f}, {robot_actions[2]:.3f}] ({total_time*1000:.1f} ms)")
 
+    if total_time > 0.2:
+        print(f"  !! SLOW step {step} ({total_time*1000:.1f} ms) new_chunk={queue_was_empty} — "
+              f"render={render_time*1000:.1f}ms, vla={vla_time*1000:.1f}ms, physics={physics_time*1000:.1f}ms")
+
 # Cleanup
 if viewer is not None:
     viewer.close()
 
 # Print timing statistics
 num_completed = len(profile_data['total'])
-print(f"\n✓ Completed {num_completed} simulation steps")
+print(f"\nCompleted {num_completed} simulation steps")
 
 if num_completed > 0:
-    print("\n" + "=" * 70)
-    print("Performance Breakdown (average per iteration)")
-    print("=" * 70)
+    print("\nPerformance Breakdown (average per iteration):")
+    print("-" * 50)
 
     components = [
         ('Rendering (2 cameras)', 'render'),
@@ -272,13 +235,4 @@ if num_completed > 0:
 
     print(f"\n  Effective rate: {1000/total_avg:.1f} Hz" if total_avg > 0 else "")
 
-print("\n" + "=" * 70)
-print("X-VLA WidowX Demo Complete!")
-print("=" * 70)
-print("\n💡 Key Points:")
-print("  - X-VLA WidowX checkpoint is fine-tuned on BridgeData")
-print("  - Uses 2-camera setup ('up' and 'side') matching training")
-print("  - Only 1% of params (9M) were trained for WidowX embodiment")
-print("  - VLM stays frozen, preserving pretrained vision understanding")
-print("\nTo fine-tune for custom tasks:")
-print("  See: https://huggingface.co/lerobot/xvla-widowx")
+print("\nDemo complete!")

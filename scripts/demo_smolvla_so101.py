@@ -29,8 +29,6 @@ if not args.headless:
         import mujoco.viewer as mj_viewer
         HAS_VIEWER = True
     except Exception as e:
-        print(f"Warning: mujoco.viewer not available: {e}")
-        print("  Falling back to headless mode")
         HAS_VIEWER = False
         args.headless = True
 else:
@@ -38,19 +36,17 @@ else:
 
 # Signal handler for clean exit
 def signal_handler(sig, frame):
-    print('\n\nInterrupted. Cleaning up...')
     if viewer is not None:
         viewer.close()
     sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
 
-print("Loading SmolVLA policy...")
+print("SmolVLA SO-101 Demo")
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
 from lerobot.policies.smolvla.processor_smolvla import make_smolvla_pre_post_processors
 
 # Load SO-101 robot model with vision scene
-print("Loading SO-101 MuJoCo model...")
 model = mujoco.MjModel.from_xml_path('assets/so101/so101_vision_scene.xml')
 data = mujoco.MjData(model)
 
@@ -108,28 +104,22 @@ def preprocess_image(rgb_image, target_size=256, device='cpu'):
     return img_tensor
 
 # Load SmolVLA policy (pretrained on SO-101)
-print("Loading SmolVLA pretrained model (~1.8GB)...")
-print("This may take a minute on first run...")
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using device: {device}")
 policy = SmolVLAPolicy.from_pretrained("lerobot/smolvla_base").to(device).eval()
-print("✓ SmolVLA loaded successfully")
-print(f"  Action chunk size: {policy.config.chunk_size}, n_action_steps: {policy.config.n_action_steps}")
-print(f"  Denoising steps: {policy.config.num_steps}")
 
 # Create preprocessor and postprocessor
-print("Creating SmolVLA preprocessor...")
 preprocessor, postprocessor = make_smolvla_pre_post_processors(
     policy.config,
     dataset_stats=None
 )
 
+print(f"Loaded SmolVLA (chunk_size={policy.config.chunk_size}, n_action_steps={policy.config.n_action_steps})")
+
 # Language task instruction
 task_instruction = "Pick the red cube and place it on the blue cube"
-print(f"\nTask: '{task_instruction}'")
+print(f"Task: '{task_instruction}'")
 
 # Settle physics
-print("\nSettling physics...")
 for _ in range(100):
     mujoco.mj_step(model, data)
 
@@ -140,14 +130,9 @@ if not args.headless and HAS_VIEWER:
     viewer.cam.azimuth = 35
     viewer.cam.elevation = -25
     viewer.cam.lookat[:] = [0.2, 0.0, 0.2]
-    print("MuJoCo viewer launched")
 
 # Simulation loop
-print("Running VLA inference loop...")
-if viewer is not None:
-    print("Close the MuJoCo viewer window to stop early")
-else:
-    print("Press Ctrl-C to stop early")
+print("Running SmolVLA inference loop...")
 num_steps = args.steps
 action_history = []
 
@@ -201,11 +186,9 @@ for step in range(num_steps):
     processed_obs = preprocessor(observation)
     preprocess_time = time.time() - preprocess_start
 
-    # 3. VLA inference
+    # 3. VLA inference (check if new chunk or popping from queue)
     vla_start = time.time()
     queue_was_empty = len(policy._queues.get("action", [])) == 0
-    if (queue_was_empty):
-        print("  !! New chunk")
     with torch.inference_mode():
         actions = policy.select_action(processed_obs)
 
@@ -254,10 +237,10 @@ for step in range(num_steps):
     if step % 20 == 0:
         print(f"  Step {step}/{num_steps}: actions = [{robot_actions[0]:.3f}, {robot_actions[1]:.3f}, {robot_actions[2]:.3f}] ({total_time*1000:.1f} ms)")
 
-    if total_time > 0.5:
-        print(f"  !! SLOW step {step} ({total_time*1000:.1f} ms){queue_was_empty} — "
+    if total_time > 0.2:
+        print(f"  !! SLOW step {step} ({total_time*1000:.1f} ms) new_chunk={queue_was_empty} — "
               f"render={render_time*1000:.1f}ms, preprocess={preprocess_time*1000:.1f}ms, "
-              f"vla={vla_time*1000:.1f}ms, physics={physics_time*1000:.1f}ms, viewer={viewer_time*1000:.1f}ms")
+              f"vla={vla_time*1000:.1f}ms, physics={physics_time*1000:.1f}ms")
 
 # Close viewer
 if viewer is not None:
@@ -265,12 +248,11 @@ if viewer is not None:
 
 # Print timing statistics
 num_completed = len(profile_data['total'])
-print(f"\n✓ Completed {num_completed} simulation steps")
+print(f"\nCompleted {num_completed} simulation steps")
 
 if num_completed > 0:
-    print("\n" + "=" * 60)
-    print("Performance Breakdown (average per iteration)")
-    print("=" * 60)
+    print("\nPerformance Breakdown (average per iteration):")
+    print("-" * 50)
 
     num_cams = 1 if args.single_camera else 3
     render_label = f'Rendering ({num_cams} camera{"" if num_cams == 1 else "s"})'
@@ -297,15 +279,6 @@ if num_completed > 0:
         if key == 'total':
             print(f"    {'(min/max)':.<28} {min_t:>7.2f} / {max_t:.2f} ms")
 
-    print("\n  Effective rate: {:.1f} Hz".format(1000/total_avg if total_avg > 0 else 0))
+    print(f"\n  Effective rate: {1000/total_avg:.1f} Hz" if total_avg > 0 else "")
 
-# Print final state
-red_cube_id = model.body('red_cube').id
-cube_pos = data.xpos[red_cube_id]
-print(f"\nFinal cube position: {cube_pos}")
-print(f"Final robot joint positions: {data.qpos[:6]}")
-
-print("\n" + "="*60)
-print("Demo complete!")
-print("="*60)
-sys.exit(0)
+print("\nDemo complete!")
