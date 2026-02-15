@@ -46,7 +46,7 @@ print("SmolVLA SO-101 Demo")
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
 from lerobot.policies.smolvla.processor_smolvla import make_smolvla_pre_post_processors
 
-# Load SO-101 robot model with vision scene
+# Load SO-101 robot model with vision scene (with tuned contact and control)
 model = mujoco.MjModel.from_xml_path('assets/so101/so101_vision_scene.xml')
 data = mujoco.MjData(model)
 
@@ -206,7 +206,9 @@ for step in range(num_steps):
     action_history.append(robot_actions.copy())
 
     # Apply actions to robot (position control)
-    data.ctrl[:6] = np.clip(robot_actions * 0.1, -1.0, 1.0)
+    # Joint control ranges: shoulder ~[-1.9, 1.9], elbow/wrist ~[-1.7, 1.7]
+    # Try treating VLA outputs as absolute target positions
+    data.ctrl[:6] = np.clip(robot_actions, -2.0, 2.0)
 
     # 4. Step simulation (physics)
     physics_start = time.time()
