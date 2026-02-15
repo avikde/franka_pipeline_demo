@@ -46,7 +46,7 @@ print("SmolVLA SO-101 Demo")
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
 from lerobot.policies.smolvla.processor_smolvla import make_smolvla_pre_post_processors
 
-# Load SO-101 robot model with vision scene
+# Load SO-101 robot model with vision scene (with tuned contact and control)
 model = mujoco.MjModel.from_xml_path('assets/so101/so101_vision_scene.xml')
 data = mujoco.MjData(model)
 
