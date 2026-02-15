@@ -206,7 +206,9 @@ for step in range(num_steps):
     action_history.append(robot_actions.copy())
 
     # Apply actions to robot (position control)
-    data.ctrl[:6] = np.clip(robot_actions * 0.1, -1.0, 1.0)
+    # Joint control ranges: shoulder ~[-1.9, 1.9], elbow/wrist ~[-1.7, 1.7]
+    # Try treating VLA outputs as absolute target positions
+    data.ctrl[:6] = np.clip(robot_actions, -2.0, 2.0)
 
     # 4. Step simulation (physics)
     physics_start = time.time()
