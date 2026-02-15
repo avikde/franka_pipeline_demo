@@ -113,8 +113,8 @@ def preprocess_image(rgb_image, device='cpu'):
 
 def get_ee_pose(model, data):
     """Get end-effector pose (position + rotation matrix)."""
-    # WidowX end-effector is the "gripper_link" body
-    ee_body_id = model.body("gripper_link").id
+    # WidowX end-effector is the "wx250s/gripper_link" body
+    ee_body_id = model.body("wx250s/gripper_link").id
     ee_pos = data.xpos[ee_body_id].copy()
     ee_rot = data.xmat[ee_body_id].reshape(3, 3).copy()
     return ee_pos, ee_rot
@@ -123,12 +123,19 @@ def rotation_matrix_to_6d(rot_mat):
     """Convert 3x3 rotation matrix to 6D representation (first two columns)."""
     return rot_mat[:, :2].flatten()
 
-def get_cube_position(model, data, cube_name="red_box"):
+def get_cube_position(model, data, cube_name="red_block"):
     """Get position of the target cube."""
     try:
         cube_body_id = model.body(cube_name).id
         return data.xpos[cube_body_id].copy()
     except:
+        # Try alternative names
+        for alt_name in ["blue_block", "red_box", "cube"]:
+            try:
+                cube_body_id = model.body(alt_name).id
+                return data.xpos[cube_body_id].copy()
+            except:
+                continue
         return None
 
 def decode_ee6d_action(action_vec):
@@ -213,7 +220,7 @@ print("\n[7/7] Running X-VLA inference loop...")
 print("=" * 60)
 
 # Create log file for detailed action analysis
-log_file = open("xvla_action_debug.log", "w")
+log_file = open("xvla_action_debug.log", "w", encoding="utf-8")
 log_file.write("X-VLA Action Debug Log\n")
 log_file.write("=" * 80 + "\n")
 log_file.write(f"Task: {task_instruction}\n")
